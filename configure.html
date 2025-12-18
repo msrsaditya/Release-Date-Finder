@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Release Date Finder Stremio Add-on</title>
+    <title>Release Date Finder</title>
     <style>
         body { font-family: sans-serif; max-width: 600px; margin: 20px auto; padding: 0 10px; }
         div { margin-bottom: 15px; }
@@ -72,7 +72,6 @@
                 msg.className = "error";
                 return null;
             }
-
             const config = { apiKey, timezone, dateFormat };
             return btoa(JSON.stringify(config));
         }

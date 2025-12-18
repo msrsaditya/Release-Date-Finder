@@ -2,16 +2,12 @@ const express = require('express');
 const cors = require('cors');
 const path = require('path');
 const fs = require('fs');
-
-// Safe fetch import
 const fetch = (...args) => import('node-fetch').then(({default: fetch}) => fetch(...args));
-
-// --- 1. CONFIGURATION ---
 const MANIFEST = {
     id: "org.releasedatefinder",
-    version: "1.0.4",
+    version: "1.0.0",
     name: "Release Date Finder",
-    description: "Shows Theatrical and Digital release dates directly in your streams list.",
+    description: "Stremio add-on for fetching the earliest release dates for movies and TV shows.",
     resources: ["stream"],
     types: ["movie", "series"],
     idPrefixes: ["tt"],
@@ -21,40 +17,29 @@ const MANIFEST = {
         configurationRequired: true
     }
 };
-
-// --- 2. HELPER FUNCTIONS ---
 function getFlagEmoji(countryCode) {
     if (!countryCode) return "";
     const codePoints = countryCode.toUpperCase().split('').map(char => 127397 + char.charCodeAt());
     return String.fromCodePoint(...codePoints);
 }
-
 function getOrdinalNum(n) {
     return n + (["st", "nd", "rd"][((n + 90) % 100 - 10) % 10 - 1] || "th");
 }
-
 function formatDate(dateObj, timezone) {
     if (!dateObj) return "TBD";
-    
     const now = new Date();
     const currentYear = now.getFullYear();
     const dateYear = dateObj.getFullYear();
-    
     let options = { timeZone: timezone, month: 'short' };
     const month = new Intl.DateTimeFormat('en-US', options).format(dateObj);
-    
     const day = new Intl.DateTimeFormat('en-US', { timeZone: timezone, day: 'numeric' }).format(dateObj);
     const dayOrdinal = getOrdinalNum(parseInt(day));
-
     let dateStr = `${month} ${dayOrdinal}`;
-
     if (dateYear !== currentYear) {
         dateStr += `, ${dateYear}`;
     }
-
     return dateStr;
 }
-
 function groupCandidates(candidates) {
     if (!candidates || candidates.length === 0) return [];
     candidates.sort((a, b) => a.date - b.date);
@@ -77,17 +62,12 @@ function groupCandidates(candidates) {
     groups.forEach(g => g.countries.sort());
     return groups;
 }
-
-// --- 3. STREAM PROCESSING LOGIC ---
 async function handleStreamRequest(type, id, config) {
     if (!config || !config.apiKey) {
         return { streams: [{ title: "⚠️ Please configure API Key", url: "https://www.themoviedb.org/" }] };
     }
     const { apiKey, timezone } = config;
-
     const cleanId = id.split(':')[0];
-
-    // Resolve IDs
     let tmdbId = null;
     try {
         const findUrl = `https://api.themoviedb.org/3/find/${cleanId}?api_key=${apiKey}&external_source=imdb_id`;
@@ -99,11 +79,9 @@ async function handleStreamRequest(type, id, config) {
     } catch (e) {
         return { streams: [] };
     }
-
     let outputLines = [];
     let statusEmojis = []; 
     const now = new Date();
-
     try {
         if (type === 'movie') {
             const url = `https://api.themoviedb.org/3/movie/${tmdbId}/release_dates?api_key=${apiKey}`;
@@ -132,25 +110,18 @@ async function handleStreamRequest(type, id, config) {
                     }
                 } else finalDig.push(gDig[0]);
             }
-
-            // --- THEATERS LINE ---
             if (finalTheat) {
                 const dateStr = formatDate(finalTheat.date, timezone);
-                // 4 spaces before flags, 2 spaces between flags
                 const flags = finalTheat.countries.map(c => getFlagEmoji(c)).join("  ");
                 outputLines.push(`Theaters: ${dateStr}    ${flags}`);
-                
                 statusEmojis.push(finalTheat.date < now ? "✅" : "❌");
             } else {
                 outputLines.push("Theaters: TBD");
                 statusEmojis.push("❌");
             }
-
-            // --- DIGITAL LINE ---
             if (finalDig.length > 0) {
                 finalDig.forEach(g => {
                     const dateStr = formatDate(g.date, timezone);
-                    // 4 spaces before flags, 2 spaces between flags
                     const flags = g.countries.map(c => getFlagEmoji(c)).join("  ");
                     const susp = g.isSuspicious ? " (Likely Wrong)" : "";
                     outputLines.push(`Digital      : ${dateStr}    ${flags}${susp}`);
@@ -161,44 +132,32 @@ async function handleStreamRequest(type, id, config) {
                 outputLines.push("Digital      : TBD");
                 statusEmojis.push("❌");
             }
-
         } else if (type === 'series') {
             const url = `https://api.themoviedb.org/3/tv/${tmdbId}?api_key=${apiKey}`;
             const resp = await fetch(url);
             const details = await resp.json();
-            
             let targetDate = null;
             let labelText = "";
-            let prefix = "Air Date:"; // Default prefix
-
-            // --- TV LOGIC ---
+            let prefix = "Air Date:";
             if (details.next_episode_to_air) {
                 targetDate = new Date(details.next_episode_to_air.air_date);
-                
-                // Determine if it's Next Episode or Next Season
-                // If the next episode is S01E01 (or S02E01 etc), it's a new Season start
-                // We compare current season with next episode season
                 const lastSeasonNum = details.last_episode_to_air ? details.last_episode_to_air.season_number : 0;
                 const nextSeasonNum = details.next_episode_to_air.season_number;
-
                 if (nextSeasonNum > lastSeasonNum) {
                     prefix = "Next SZN Air Date:";
                 } else {
                     prefix = "Next EP Air Date:";
                 }
-
             } else if (details.last_episode_to_air) {
                 targetDate = new Date(details.last_episode_to_air.air_date);
-                prefix = "Last Air Date:"; // Fallback for ended shows
+                prefix = "Last Air Date:";
                 try {
                     const lastSeasonNum = details.last_episode_to_air.season_number;
                     const seasonUrl = `https://api.themoviedb.org/3/tv/${tmdbId}/season/${lastSeasonNum}?api_key=${apiKey}`;
                     const seasonResp = await fetch(seasonUrl);
                     const seasonData = await seasonResp.json();
-                    
                     const airDates = new Set();
                     if(seasonData.episodes) seasonData.episodes.forEach(e => { if(e.air_date) airDates.add(e.air_date) });
-                    
                     if (airDates.size === 1) {
                         labelText = "(Last Season)";
                     } else {
@@ -208,14 +167,11 @@ async function handleStreamRequest(type, id, config) {
                     labelText = "(Last Episode, Last Season)";
                 }
             }
-
             if (targetDate) {
                 const dateStr = formatDate(targetDate, timezone);
-                // 4 spaces before flags, 2 spaces between flags
                 const flags = (details.origin_country || []).map(c => getFlagEmoji(c)).join("  ");
                 outputLines.push(`${prefix} ${dateStr}    ${flags}`);
                 if (labelText) outputLines.push(labelText);
-
                 statusEmojis.push(targetDate < now ? "✅" : "❌");
             } else {
                 outputLines.push("Air Date: TBD");
@@ -225,13 +181,7 @@ async function handleStreamRequest(type, id, config) {
     } catch (err) {
         return { streams: [{ title: "⚠️ Error fetching dates", name: "Error" }] };
     }
-
-    // --- NO HACK ---
-    // User requested "vertical line in code itself, no hacks". 
-    // We pass them joined by a newline. If the Stremio client displays them vertically, good. 
-    // If side-by-side, it is the client's behavior.
     const emojiStack = statusEmojis.join("\n");
-
     return {
         streams: [{
             name: emojiStack,
@@ -240,14 +190,9 @@ async function handleStreamRequest(type, id, config) {
         }]
     };
 }
-
-// --- 4. EXPRESS SERVER SETUP ---
 const app = express();
 const port = process.env.PORT || 7000;
-
 app.use(cors());
-
-// BASE MANIFEST
 const baseManifest = {
     id: "org.releasedatefinder",
     version: "1.0.4",
@@ -258,18 +203,12 @@ const baseManifest = {
     idPrefixes: ["tt"],
     catalogs: []
 };
-
-// A. Serve the Configure Page (Root URL)
 app.get('/', (req, res) => {
     res.sendFile(path.join(__dirname, 'configure.html'));
 });
-
-// B. Handle /configure route
 app.get('/:config/configure', (req, res) => {
     res.sendFile(path.join(__dirname, 'configure.html'));
 });
-
-// C. Handle Manifest Request
 app.get(['/manifest.json', '/:config/manifest.json'], (req, res) => {
     res.setHeader('Content-Type', 'application/json');
     const manifest = { ...baseManifest };
@@ -280,8 +219,6 @@ app.get(['/manifest.json', '/:config/manifest.json'], (req, res) => {
     }
     res.send(manifest);
 });
-
-// D. Handle Stream Request
 app.get(['/stream/:type/:id.json', '/:config/stream/:type/:id.json'], async (req, res) => {
     res.setHeader('Content-Type', 'application/json');
     let config = {};
@@ -296,7 +233,6 @@ app.get(['/stream/:type/:id.json', '/:config/stream/:type/:id.json'], async (req
     const response = await handleStreamRequest(req.params.type, req.params.id, config);
     res.send(response);
 });
-
 app.listen(port, () => {
     console.log(`Add-on active on port ${port}`);
 });
