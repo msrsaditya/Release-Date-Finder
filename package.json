@@ -1,14 +1,13 @@
 {
   "name": "release-date-stremio-addon",
   "version": "1.0.0",
-  "description": "Stremio add-on for fetching the earliest release dates for movies and TV shows.",
+  "description": "Stremio addon for release dates",
   "main": "server.js",
   "scripts": {
     "start": "node server.js"
   },
   "dependencies": {
     "stremio-addon-sdk": "^1.6.9",
-    "node-fetch": "^2.6.7",
-    "express": "^4.18.2"
+    "node-fetch": "^2.6.7"
   }
 }

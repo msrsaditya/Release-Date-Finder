@@ -1,5 +1,5 @@
-const { addonBuilder, getRouter } = require("stremio-addon-sdk");
-const express = require('express');
+const { addonBuilder, serveHTTP } = require("stremio-addon-sdk");
+const fs = require('fs');
 const path = require('path');
 
 // Safe fetch import for all Node environments
@@ -233,24 +233,13 @@ builder.defineStreamHandler(async ({ type, id, config }) => {
     };
 });
 
-// --- SERVER SETUP ---
-const app = express();
-const port = process.env.PORT || 7000;
+// --- SERVER SETUP (THE FIX) ---
+// We read your HTML file and pass it to the official Stremio SDK server.
+// This guarantees that all Stremio routes (like /manifest.json) work perfectly.
 
-// 1. Serve the Configuration HTML on the Homepage (Root)
-// IMPORTANT: This must be defined BEFORE the router
-app.get('/', (req, res) => {
-    res.sendFile(path.join(__dirname, 'configure.html'));
-});
+const landingHTML = fs.readFileSync(path.join(__dirname, 'configure.html'), 'utf8');
 
-// 2. Convert the Add-on Interface to an Express Router
-const addonInterface = builder.getInterface();
-const addonRouter = getRouter(addonInterface);
-
-// 3. Mount the Router
-app.use('/', addonRouter);
-
-// 4. Start the Server
-app.listen(port, () => {
-    console.log(`Add-on active on port ${port}`);
+serveHTTP(builder.getInterface(), {
+    port: process.env.PORT || 7000,
+    landing: landingHTML 
 });
