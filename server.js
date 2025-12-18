@@ -9,7 +9,7 @@ const fetch = (...args) => import('node-fetch').then(({default: fetch}) => fetch
 // --- 1. CONFIGURATION ---
 const MANIFEST = {
     id: "org.releasedatefinder",
-    version: "1.0.3", // Bumped version
+    version: "1.0.4",
     name: "Release Date Finder",
     description: "Shows Theatrical and Digital release dates directly in your streams list.",
     resources: ["stream"],
@@ -136,9 +136,9 @@ async function handleStreamRequest(type, id, config) {
             // --- THEATERS LINE ---
             if (finalTheat) {
                 const dateStr = formatDate(finalTheat.date, timezone);
-                // 3 spaces before flags
-                const flags = finalTheat.countries.map(c => getFlagEmoji(c)).join(" ");
-                outputLines.push(`Theaters: ${dateStr}   ${flags}`);
+                // 4 spaces before flags, 2 spaces between flags
+                const flags = finalTheat.countries.map(c => getFlagEmoji(c)).join("  ");
+                outputLines.push(`Theaters: ${dateStr}    ${flags}`);
                 
                 statusEmojis.push(finalTheat.date < now ? "✅" : "❌");
             } else {
@@ -147,19 +147,18 @@ async function handleStreamRequest(type, id, config) {
             }
 
             // --- DIGITAL LINE ---
-            // Added one more space (6 total for alignment)
             if (finalDig.length > 0) {
                 finalDig.forEach(g => {
                     const dateStr = formatDate(g.date, timezone);
-                    const flags = g.countries.map(c => getFlagEmoji(c)).join(" ");
-                    const susp = g.isSuspicious ? " (Likely Wrong)" : ""; // Renamed
-                    // 3 spaces before flags
-                    outputLines.push(`Digital      : ${dateStr}   ${flags}${susp}`);
+                    // 4 spaces before flags, 2 spaces between flags
+                    const flags = g.countries.map(c => getFlagEmoji(c)).join("  ");
+                    const susp = g.isSuspicious ? " (Likely Wrong)" : "";
+                    outputLines.push(`Digital     : ${dateStr}    ${flags}${susp}`);
                     
                     statusEmojis.push(g.date < now ? "✅" : "❌");
                 });
             } else {
-                outputLines.push("Digital      : TBD");
+                outputLines.push("Digital     : TBD");
                 statusEmojis.push("❌");
             }
 
@@ -170,12 +169,27 @@ async function handleStreamRequest(type, id, config) {
             
             let targetDate = null;
             let labelText = "";
+            let prefix = "Air Date:"; // Default prefix
 
-            // --- RESTORED TV LOGIC ---
+            // --- TV LOGIC ---
             if (details.next_episode_to_air) {
                 targetDate = new Date(details.next_episode_to_air.air_date);
+                
+                // Determine if it's Next Episode or Next Season
+                // If the next episode is S01E01 (or S02E01 etc), it's a new Season start
+                // We compare current season with next episode season
+                const lastSeasonNum = details.last_episode_to_air ? details.last_episode_to_air.season_number : 0;
+                const nextSeasonNum = details.next_episode_to_air.season_number;
+
+                if (nextSeasonNum > lastSeasonNum) {
+                    prefix = "Next SZN Air Date:";
+                } else {
+                    prefix = "Next EP Air Date:";
+                }
+
             } else if (details.last_episode_to_air) {
                 targetDate = new Date(details.last_episode_to_air.air_date);
+                prefix = "Last Air Date:"; // Fallback for ended shows
                 try {
                     const lastSeasonNum = details.last_episode_to_air.season_number;
                     const seasonUrl = `https://api.themoviedb.org/3/tv/${tmdbId}/season/${lastSeasonNum}?api_key=${apiKey}`;
@@ -185,7 +199,6 @@ async function handleStreamRequest(type, id, config) {
                     const airDates = new Set();
                     if(seasonData.episodes) seasonData.episodes.forEach(e => { if(e.air_date) airDates.add(e.air_date) });
                     
-                    // If all episodes in season aired same day -> "Last Season"
                     if (airDates.size === 1) {
                         labelText = "(Last Season)";
                     } else {
@@ -198,10 +211,10 @@ async function handleStreamRequest(type, id, config) {
 
             if (targetDate) {
                 const dateStr = formatDate(targetDate, timezone);
-                const flags = (details.origin_country || []).map(c => getFlagEmoji(c)).join(" ");
-                // 3 spaces before flags
-                outputLines.push(`Air Date: ${dateStr}   ${flags}`);
-                if (labelText) outputLines.push(labelText); // Add label on next line
+                // 4 spaces before flags, 2 spaces between flags
+                const flags = (details.origin_country || []).map(c => getFlagEmoji(c)).join("  ");
+                outputLines.push(`${prefix} ${dateStr}    ${flags}`);
+                if (labelText) outputLines.push(labelText);
 
                 statusEmojis.push(targetDate < now ? "✅" : "❌");
             } else {
@@ -213,9 +226,11 @@ async function handleStreamRequest(type, id, config) {
         return { streams: [{ title: "⚠️ Error fetching dates", name: "Error" }] };
     }
 
-    // --- THE EMOJI HACK ---
-    // Join emojis with 20 newlines to force spacing in Stremio UI
-    const emojiStack = statusEmojis.join("\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n");
+    // --- NO HACK ---
+    // User requested "vertical line in code itself, no hacks". 
+    // We pass them joined by a newline. If the Stremio client displays them vertically, good. 
+    // If side-by-side, it is the client's behavior.
+    const emojiStack = statusEmojis.join("\n");
 
     return {
         streams: [{
@@ -235,7 +250,7 @@ app.use(cors());
 // BASE MANIFEST
 const baseManifest = {
     id: "org.releasedatefinder",
-    version: "1.0.3",
+    version: "1.0.4",
     name: "Release Date Finder",
     description: "Shows Theatrical and Digital release dates directly in your streams list.",
     resources: ["stream"],
