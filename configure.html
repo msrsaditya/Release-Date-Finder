@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Release Date Finder Stremio Add-on</title>
+    <style>
+        body { font-family: sans-serif; max-width: 600px; margin: 20px auto; padding: 0 10px; }
+        div { margin-bottom: 15px; }
+        input[type="text"] { width: 100%; padding: 8px; box-sizing: border-box; }
+        select { padding: 5px; }
+        button { padding: 10px 20px; cursor: pointer; font-weight: bold; }
+        .error { color: red; font-weight: bold; }
+        .success { color: green; font-weight: bold; }
+    </style>
+</head>
+<body>
+    <h1>Release Date Finder Stremio Add-on</h1>
+    <div>
+        <label for="apiKeyInput"><strong>TMDB API Key: </strong></label>
+        <input type="text" id="apiKeyInput" placeholder="Enter your TMDB API Key">
+        <small>Required to fetch release dates.</small>
+    </div>
+    <div>
+        <label for="timezoneSelect"><strong>Select Timezone: </strong></label>
+        <select id="timezoneSelect">
+            <option value="UTC">UTC</option>
+        </select>
+    </div>
+    <div>
+        <label for="dateFormatSelect"><strong>Select Date Format: </strong></label>
+        <select id="dateFormatSelect">
+            <option value="iso">YYYY-MM-DD (ISO)</option>
+            <option value="us">MM/DD/YYYY (US)</option>
+            <option value="eu">DD/MM/YYYY (EU)</option>
+            <option value="long" selected>Long Date (e.g. January 1, 2024)</option>
+        </select>
+    </div>
+    <hr>
+    <div>
+        <button onclick="installAddon()">Install Add-on</button>
+        <button onclick="copyLink()">Copy Link</button>
+        <p id="message"></p>
+    </div>
+    <script>
+        (function populateTimezones() {
+            const select = document.getElementById('timezoneSelect');
+            const userTz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+            try {
+                const timezones = Intl.supportedValuesOf('timeZone');
+                timezones.forEach(tz => {
+                    if (tz === 'UTC') return;
+                    const opt = document.createElement('option');
+                    opt.value = tz;
+                    opt.innerText = tz;
+                    select.appendChild(opt);
+                });
+                if (userTz && (timezones.includes(userTz) || userTz === 'UTC')) {
+                    select.value = userTz;
+                }
+            } catch (e) {
+                console.warn("Timezone API not supported, defaulting to UTC.");
+            }
+        })();
+        function getConfiguration() {
+            const apiKey = document.getElementById("apiKeyInput").value.trim();
+            const timezone = document.getElementById("timezoneSelect").value;
+            const dateFormat = document.getElementById("dateFormatSelect").value;
+            if (!apiKey) {
+                const msg = document.getElementById("message");
+                msg.innerText = "Error: TMDB API Key is required.";
+                msg.className = "error";
+                return null;
+            }
+
+            const config = { apiKey, timezone, dateFormat };
+            return btoa(JSON.stringify(config));
+        }
+        function installAddon() {
+            const config = getConfiguration();
+            if (!config) return;
+            const host = window.location.host;
+            const protocol = window.location.protocol.replace(':', '');
+            window.location.href = `stremio://${host}/${config}/manifest.json`;
+        }
+        function copyLink() {
+            const config = getConfiguration();
+            if (!config) return;
+            const host = window.location.host;
+            const protocol = window.location.protocol;
+            const url = `${protocol}//${host}/${config}/manifest.json`;
+            navigator.clipboard.writeText(url).then(() => {
+                const msg = document.getElementById("message");
+                msg.innerText = "Link copied to clipboard!";
+                msg.className = "success";
+            });
+        }
+    </script>
+</body>
+</html>
