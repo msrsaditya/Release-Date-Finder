@@ -1,12 +1,12 @@
-const { addonBuilder, getRouter } = require("stremio-addon-sdk");
-const express = require('express');
-const cors = require('cors');
+const { addonBuilder, serveHTTP } = require("stremio-addon-sdk");
+const fs = require('fs');
 const path = require('path');
 
 // Safe fetch import
 const fetch = (...args) => import('node-fetch').then(({default: fetch}) => fetch(...args));
 
-// 1. Initialize the Add-on
+// 1. Define the Manifest
+// We add 'behaviorHints' to explicitly tell Stremio this add-on is configurable.
 const builder = new addonBuilder({
     id: "org.releasedatefinder",
     version: "1.0.0",
@@ -15,7 +15,11 @@ const builder = new addonBuilder({
     resources: ["stream"],
     types: ["movie", "series"],
     idPrefixes: ["tt"], 
-    catalogs: []
+    catalogs: [],
+    behaviorHints: {
+        configurable: true,
+        configurationRequired: true
+    }
 });
 
 // --- HELPER: Country Code to Flag Emoji ---
@@ -92,7 +96,6 @@ function groupCandidates(candidates) {
 builder.defineStreamHandler(async ({ type, id, config }) => {
     // 1. Validate Config
     if (!config || !config.apiKey) {
-        // Return a warning stream if not configured
         return { streams: [{ title: "⚠️ Please configure API Key", url: "https://www.themoviedb.org/" }] };
     }
     const { apiKey, timezone, dateFormat } = config;
@@ -111,7 +114,7 @@ builder.defineStreamHandler(async ({ type, id, config }) => {
         return { streams: [] };
     }
 
-    // 3. Fetch & Process Dates
+    // 3. Process Dates
     let outputLines = [];
     try {
         if (type === 'movie') {
@@ -175,27 +178,20 @@ builder.defineStreamHandler(async ({ type, id, config }) => {
     };
 });
 
-// --- SERVER SETUP (The Official Express Method) ---
-const app = express();
-const port = process.env.PORT || 7000;
+// --- SERVER SETUP ---
+// We read the HTML file specifically from the current directory
+// If it fails, we log an error so you can see it in Render logs
+let landingHTML = "<h1>Error loading configuration page</h1>";
+try {
+    const htmlPath = path.join(__dirname, 'configure.html');
+    landingHTML = fs.readFileSync(htmlPath, 'utf8');
+    console.log("✅ Successfully loaded configure.html (" + landingHTML.length + " bytes)");
+} catch (e) {
+    console.error("❌ Failed to load configure.html:", e);
+}
 
-// 1. Trust Proxy (Required for some hosts like Render/Heroku to handle HTTPS correctly)
-app.set('trust proxy', true);
-
-// 2. CORS Middleware (Crucial for Stremio)
-app.use(cors());
-
-// 3. Serve Custom Configuration Page
-app.get('/', (req, res) => {
-    res.sendFile(path.join(__dirname, 'configure.html'));
-});
-
-// 4. Mount Add-on Router
-// This handles /manifest.json and /:config/stream/... automatically
-const addonInterface = builder.getInterface();
-const addonRouter = getRouter(addonInterface);
-app.use(addonRouter);
-
-app.listen(port, () => {
-    console.log(`Add-on active on port ${port}`);
+// Start the official Stremio Server
+serveHTTP(builder.getInterface(), {
+    port: process.env.PORT || 7000,
+    landing: landingHTML
 });
