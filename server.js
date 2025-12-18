@@ -9,7 +9,7 @@ const fetch = (...args) => import('node-fetch').then(({default: fetch}) => fetch
 // --- 1. CONFIGURATION ---
 const MANIFEST = {
     id: "org.releasedatefinder",
-    version: "1.0.2",
+    version: "1.0.3", // Bumped version
     name: "Release Date Finder",
     description: "Shows Theatrical and Digital release dates directly in your streams list.",
     resources: ["stream"],
@@ -29,7 +29,6 @@ function getFlagEmoji(countryCode) {
     return String.fromCodePoint(...codePoints);
 }
 
-// Helper for 1st, 2nd, 3rd, 4th...
 function getOrdinalNum(n) {
     return n + (["st", "nd", "rd"][((n + 90) % 100 - 10) % 10 - 1] || "th");
 }
@@ -41,18 +40,14 @@ function formatDate(dateObj, timezone) {
     const currentYear = now.getFullYear();
     const dateYear = dateObj.getFullYear();
     
-    // Get parts manually to construct "Mar 1st, 2025"
     let options = { timeZone: timezone, month: 'short' };
     const month = new Intl.DateTimeFormat('en-US', options).format(dateObj);
     
-    // We need the day number in the target timezone
-    // The safest way is to format it to a string and parse it, or use Intl
     const day = new Intl.DateTimeFormat('en-US', { timeZone: timezone, day: 'numeric' }).format(dateObj);
     const dayOrdinal = getOrdinalNum(parseInt(day));
 
     let dateStr = `${month} ${dayOrdinal}`;
 
-    // Add year only if it is NOT the current year
     if (dateYear !== currentYear) {
         dateStr += `, ${dateYear}`;
     }
@@ -90,7 +85,6 @@ async function handleStreamRequest(type, id, config) {
     }
     const { apiKey, timezone } = config;
 
-    // FIX: TV Shows send IDs like 'tt12345:1:2'. We need just 'tt12345' for lookup.
     const cleanId = id.split(':')[0];
 
     // Resolve IDs
@@ -142,9 +136,9 @@ async function handleStreamRequest(type, id, config) {
             // --- THEATERS LINE ---
             if (finalTheat) {
                 const dateStr = formatDate(finalTheat.date, timezone);
-                // No brackets, no commas (just space separated flags)
+                // 3 spaces before flags
                 const flags = finalTheat.countries.map(c => getFlagEmoji(c)).join(" ");
-                outputLines.push(`Theaters: ${dateStr} ${flags}`);
+                outputLines.push(`Theaters: ${dateStr}   ${flags}`);
                 
                 statusEmojis.push(finalTheat.date < now ? "✅" : "❌");
             } else {
@@ -153,13 +147,14 @@ async function handleStreamRequest(type, id, config) {
             }
 
             // --- DIGITAL LINE ---
-            // Added 5 spaces total for alignment
+            // Added one more space (6 total for alignment)
             if (finalDig.length > 0) {
                 finalDig.forEach(g => {
                     const dateStr = formatDate(g.date, timezone);
                     const flags = g.countries.map(c => getFlagEmoji(c)).join(" ");
-                    const susp = g.isSuspicious ? " (Likely Untrue)" : "";
-                    outputLines.push(`Digital      : ${dateStr} ${flags}${susp}`);
+                    const susp = g.isSuspicious ? " (Likely Wrong)" : ""; // Renamed
+                    // 3 spaces before flags
+                    outputLines.push(`Digital      : ${dateStr}   ${flags}${susp}`);
                     
                     statusEmojis.push(g.date < now ? "✅" : "❌");
                 });
@@ -172,14 +167,42 @@ async function handleStreamRequest(type, id, config) {
             const url = `https://api.themoviedb.org/3/tv/${tmdbId}?api_key=${apiKey}`;
             const resp = await fetch(url);
             const details = await resp.json();
-            let targetDateStr = details.next_episode_to_air?.air_date || details.last_episode_to_air?.air_date;
             
-            if (targetDateStr) {
-                const targetDate = new Date(targetDateStr);
+            let targetDate = null;
+            let labelText = "";
+
+            // --- RESTORED TV LOGIC ---
+            if (details.next_episode_to_air) {
+                targetDate = new Date(details.next_episode_to_air.air_date);
+            } else if (details.last_episode_to_air) {
+                targetDate = new Date(details.last_episode_to_air.air_date);
+                try {
+                    const lastSeasonNum = details.last_episode_to_air.season_number;
+                    const seasonUrl = `https://api.themoviedb.org/3/tv/${tmdbId}/season/${lastSeasonNum}?api_key=${apiKey}`;
+                    const seasonResp = await fetch(seasonUrl);
+                    const seasonData = await seasonResp.json();
+                    
+                    const airDates = new Set();
+                    if(seasonData.episodes) seasonData.episodes.forEach(e => { if(e.air_date) airDates.add(e.air_date) });
+                    
+                    // If all episodes in season aired same day -> "Last Season"
+                    if (airDates.size === 1) {
+                        labelText = "(Last Season)";
+                    } else {
+                        labelText = "(Last Episode, Last Season)";
+                    }
+                } catch (e) {
+                    labelText = "(Last Episode, Last Season)";
+                }
+            }
+
+            if (targetDate) {
                 const dateStr = formatDate(targetDate, timezone);
                 const flags = (details.origin_country || []).map(c => getFlagEmoji(c)).join(" ");
-                outputLines.push(`Air Date: ${dateStr} ${flags}`);
-                
+                // 3 spaces before flags
+                outputLines.push(`Air Date: ${dateStr}   ${flags}`);
+                if (labelText) outputLines.push(labelText); // Add label on next line
+
                 statusEmojis.push(targetDate < now ? "✅" : "❌");
             } else {
                 outputLines.push("Air Date: TBD");
@@ -190,11 +213,13 @@ async function handleStreamRequest(type, id, config) {
         return { streams: [{ title: "⚠️ Error fetching dates", name: "Error" }] };
     }
 
+    // --- THE EMOJI HACK ---
+    // Join emojis with 20 newlines to force spacing in Stremio UI
+    const emojiStack = statusEmojis.join("\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n");
+
     return {
         streams: [{
-            // We join with \n to attempt vertical stacking. 
-            // If Stremio displays them side-by-side, it is a UI limitation of the client.
-            name: statusEmojis.join("\n"),
+            name: emojiStack,
             title: outputLines.join("\n"),
             externalUrl: `https://www.themoviedb.org/${type === 'series' ? 'tv' : 'movie'}/${tmdbId}` 
         }]
@@ -210,7 +235,7 @@ app.use(cors());
 // BASE MANIFEST
 const baseManifest = {
     id: "org.releasedatefinder",
-    version: "1.0.2",
+    version: "1.0.3",
     name: "Release Date Finder",
     description: "Shows Theatrical and Digital release dates directly in your streams list.",
     resources: ["stream"],
