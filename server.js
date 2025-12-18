@@ -6,23 +6,7 @@ const fs = require('fs');
 // Safe fetch import
 const fetch = (...args) => import('node-fetch').then(({default: fetch}) => fetch(...args));
 
-// --- 1. CONFIGURATION ---
-const MANIFEST = {
-    id: "org.releasedatefinder",
-    version: "1.0.0",
-    name: "Release Date Finder",
-    description: "Shows Theatrical and Digital release dates directly in your streams list.",
-    resources: ["stream"],
-    types: ["movie", "series"],
-    idPrefixes: ["tt"],
-    catalogs: [],
-    behaviorHints: {
-        configurable: true,
-        configurationRequired: true
-    }
-};
-
-// --- 2. HELPER FUNCTIONS (Your Verified Logic) ---
+// --- 1. HELPER FUNCTIONS ---
 function getFlagEmoji(countryCode) {
     if (!countryCode) return "";
     const codePoints = countryCode.toUpperCase().split('').map(char => 127397 + char.charCodeAt());
@@ -69,14 +53,12 @@ function groupCandidates(candidates) {
     return groups;
 }
 
-// --- 3. STREAM PROCESSING LOGIC ---
 async function handleStreamRequest(type, id, config) {
     if (!config || !config.apiKey) {
         return { streams: [{ title: "⚠️ Please configure API Key", url: "https://www.themoviedb.org/" }] };
     }
     const { apiKey, timezone, dateFormat } = config;
 
-    // Resolve IDs
     let tmdbId = null;
     try {
         const findUrl = `https://api.themoviedb.org/3/find/${id}?api_key=${apiKey}&external_source=imdb_id`;
@@ -152,30 +134,63 @@ async function handleStreamRequest(type, id, config) {
     };
 }
 
-// --- 4. EXPRESS SERVER SETUP (THE FIX) ---
+// --- 2. EXPRESS SERVER SETUP ---
 const app = express();
 const port = process.env.PORT || 7000;
 
-app.use(cors()); // Allow Stremio to access this server
+app.use(cors());
+
+// BASE MANIFEST
+const baseManifest = {
+    id: "org.releasedatefinder",
+    version: "1.0.0",
+    name: "Release Date Finder",
+    description: "Shows Theatrical and Digital release dates directly in your streams list.",
+    resources: ["stream"],
+    types: ["movie", "series"],
+    idPrefixes: ["tt"],
+    catalogs: []
+};
 
 // A. Serve the Configure Page (Root URL)
 app.get('/', (req, res) => {
     res.sendFile(path.join(__dirname, 'configure.html'));
 });
 
-// B. Handle Manifest Request (With and Without Config)
-// This catches /manifest.json AND /eyJ.../manifest.json
-app.get(['/manifest.json', '/:config/manifest.json'], (req, res) => {
-    res.setHeader('Content-Type', 'application/json');
-    res.send(MANIFEST);
+// B. Handle /configure route (Fixes the 404 error)
+// When Stremio says "Configure", it goes here. We just show the HTML again.
+app.get('/:config/configure', (req, res) => {
+    res.sendFile(path.join(__dirname, 'configure.html'));
 });
 
-// C. Handle Stream Request (With and Without Config)
-// This catches /stream/movie/tt123.json AND /eyJ.../stream/movie/tt123.json
-app.get(['/stream/:type/:id.json', '/:config/stream/:type/:id.json'], async (req, res) => {
+// C. Handle Manifest Request (The Smart Manifest Fix)
+app.get(['/manifest.json', '/:config/manifest.json'], (req, res) => {
     res.setHeader('Content-Type', 'application/json');
     
-    // Extract config from URL param
+    // CLONE the manifest so we don't modify the global one
+    const manifest = { ...baseManifest };
+
+    // LOGIC: If 'config' is present in URL, user has configured it.
+    // So we set configurationRequired = false to show "INSTALL" button.
+    if (req.params.config) {
+        manifest.behaviorHints = {
+            configurable: true,
+            configurationRequired: false 
+        };
+    } else {
+        // No config yet, force configuration
+        manifest.behaviorHints = {
+            configurable: true,
+            configurationRequired: true 
+        };
+    }
+    
+    res.send(manifest);
+});
+
+// D. Handle Stream Request
+app.get(['/stream/:type/:id.json', '/:config/stream/:type/:id.json'], async (req, res) => {
+    res.setHeader('Content-Type', 'application/json');
     let config = {};
     if (req.params.config) {
         try {
@@ -185,13 +200,10 @@ app.get(['/stream/:type/:id.json', '/:config/stream/:type/:id.json'], async (req
             console.error("Config parse error", e);
         }
     }
-
     const response = await handleStreamRequest(req.params.type, req.params.id, config);
     res.send(response);
 });
 
-// Start Server
 app.listen(port, () => {
     console.log(`Add-on active on port ${port}`);
-    console.log(`Open http://localhost:${port} to configure`);
 });
