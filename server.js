@@ -9,7 +9,7 @@ const fetch = (...args) => import('node-fetch').then(({default: fetch}) => fetch
 // --- 1. CONFIGURATION ---
 const MANIFEST = {
     id: "org.releasedatefinder",
-    version: "1.0.1",
+    version: "1.0.2",
     name: "Release Date Finder",
     description: "Shows Theatrical and Digital release dates directly in your streams list.",
     resources: ["stream"],
@@ -29,6 +29,11 @@ function getFlagEmoji(countryCode) {
     return String.fromCodePoint(...codePoints);
 }
 
+// Helper for 1st, 2nd, 3rd, 4th...
+function getOrdinalNum(n) {
+    return n + (["st", "nd", "rd"][((n + 90) % 100 - 10) % 10 - 1] || "th");
+}
+
 function formatDate(dateObj, timezone) {
     if (!dateObj) return "TBD";
     
@@ -36,23 +41,23 @@ function formatDate(dateObj, timezone) {
     const currentYear = now.getFullYear();
     const dateYear = dateObj.getFullYear();
     
-    // Logic: Short Month (MMM), Day. Hide Year if it matches Current Year.
-    let options = { 
-        timeZone: timezone, 
-        month: 'short', 
-        day: 'numeric' 
-    };
+    // Get parts manually to construct "Mar 1st, 2025"
+    let options = { timeZone: timezone, month: 'short' };
+    const month = new Intl.DateTimeFormat('en-US', options).format(dateObj);
+    
+    // We need the day number in the target timezone
+    // The safest way is to format it to a string and parse it, or use Intl
+    const day = new Intl.DateTimeFormat('en-US', { timeZone: timezone, day: 'numeric' }).format(dateObj);
+    const dayOrdinal = getOrdinalNum(parseInt(day));
 
-    // Only add year if it is NOT the current year
+    let dateStr = `${month} ${dayOrdinal}`;
+
+    // Add year only if it is NOT the current year
     if (dateYear !== currentYear) {
-        options.year = 'numeric';
+        dateStr += `, ${dateYear}`;
     }
 
-    try {
-        return new Intl.DateTimeFormat('en-US', options).format(dateObj);
-    } catch (e) {
-        return dateObj.toISOString().split('T')[0];
-    }
+    return dateStr;
 }
 
 function groupCandidates(candidates) {
@@ -102,7 +107,7 @@ async function handleStreamRequest(type, id, config) {
     }
 
     let outputLines = [];
-    let statusEmojis = []; // Stores ✅ or ❌
+    let statusEmojis = []; 
     const now = new Date();
 
     try {
@@ -137,10 +142,10 @@ async function handleStreamRequest(type, id, config) {
             // --- THEATERS LINE ---
             if (finalTheat) {
                 const dateStr = formatDate(finalTheat.date, timezone);
+                // No brackets, no commas (just space separated flags)
                 const flags = finalTheat.countries.map(c => getFlagEmoji(c)).join(" ");
-                outputLines.push(`Theaters: ${dateStr} (${flags})`);
+                outputLines.push(`Theaters: ${dateStr} ${flags}`);
                 
-                // Emoji Logic: Has it released yet?
                 statusEmojis.push(finalTheat.date < now ? "✅" : "❌");
             } else {
                 outputLines.push("Theaters: TBD");
@@ -148,18 +153,18 @@ async function handleStreamRequest(type, id, config) {
             }
 
             // --- DIGITAL LINE ---
-            // Added explicit 4 spaces as requested
+            // Added 5 spaces total for alignment
             if (finalDig.length > 0) {
                 finalDig.forEach(g => {
                     const dateStr = formatDate(g.date, timezone);
                     const flags = g.countries.map(c => getFlagEmoji(c)).join(" ");
                     const susp = g.isSuspicious ? " (Likely Untrue)" : "";
-                    outputLines.push(`Digital    : ${dateStr} (${flags})${susp}`);
+                    outputLines.push(`Digital     : ${dateStr} ${flags}${susp}`);
                     
                     statusEmojis.push(g.date < now ? "✅" : "❌");
                 });
             } else {
-                outputLines.push("Digital    : TBD");
+                outputLines.push("Digital     : TBD");
                 statusEmojis.push("❌");
             }
 
@@ -173,7 +178,7 @@ async function handleStreamRequest(type, id, config) {
                 const targetDate = new Date(targetDateStr);
                 const dateStr = formatDate(targetDate, timezone);
                 const flags = (details.origin_country || []).map(c => getFlagEmoji(c)).join(" ");
-                outputLines.push(`Air Date: ${dateStr} (${flags})`);
+                outputLines.push(`Air Date: ${dateStr} ${flags}`);
                 
                 statusEmojis.push(targetDate < now ? "✅" : "❌");
             } else {
@@ -187,9 +192,9 @@ async function handleStreamRequest(type, id, config) {
 
     return {
         streams: [{
-            // NAME: The left side. We join emojis with a newline to align vertically.
+            // We join with \n to attempt vertical stacking. 
+            // If Stremio displays them side-by-side, it is a UI limitation of the client.
             name: statusEmojis.join("\n"),
-            // TITLE: The right side. Information text.
             title: outputLines.join("\n"),
             externalUrl: `https://www.themoviedb.org/${type === 'series' ? 'tv' : 'movie'}/${tmdbId}` 
         }]
@@ -205,7 +210,7 @@ app.use(cors());
 // BASE MANIFEST
 const baseManifest = {
     id: "org.releasedatefinder",
-    version: "1.0.1",
+    version: "1.0.2",
     name: "Release Date Finder",
     description: "Shows Theatrical and Digital release dates directly in your streams list.",
     resources: ["stream"],
