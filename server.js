@@ -5,8 +5,7 @@ const path = require('path');
 // Safe fetch import
 const fetch = (...args) => import('node-fetch').then(({default: fetch}) => fetch(...args));
 
-// 1. Define the Manifest
-// We add 'behaviorHints' to explicitly tell Stremio this add-on is configurable.
+// 1. Initialize the Add-on
 const builder = new addonBuilder({
     id: "org.releasedatefinder",
     version: "1.0.0",
@@ -94,13 +93,11 @@ function groupCandidates(candidates) {
 
 // --- STREAM HANDLER ---
 builder.defineStreamHandler(async ({ type, id, config }) => {
-    // 1. Validate Config
     if (!config || !config.apiKey) {
         return { streams: [{ title: "⚠️ Please configure API Key", url: "https://www.themoviedb.org/" }] };
     }
     const { apiKey, timezone, dateFormat } = config;
     
-    // 2. Resolve IDs
     let tmdbId = null;
     try {
         const findUrl = `https://api.themoviedb.org/3/find/${id}?api_key=${apiKey}&external_source=imdb_id`;
@@ -114,7 +111,6 @@ builder.defineStreamHandler(async ({ type, id, config }) => {
         return { streams: [] };
     }
 
-    // 3. Process Dates
     let outputLines = [];
     try {
         if (type === 'movie') {
@@ -179,18 +175,15 @@ builder.defineStreamHandler(async ({ type, id, config }) => {
 });
 
 // --- SERVER SETUP ---
-// We read the HTML file specifically from the current directory
-// If it fails, we log an error so you can see it in Render logs
 let landingHTML = "<h1>Error loading configuration page</h1>";
 try {
     const htmlPath = path.join(__dirname, 'configure.html');
     landingHTML = fs.readFileSync(htmlPath, 'utf8');
-    console.log("✅ Successfully loaded configure.html (" + landingHTML.length + " bytes)");
+    console.log("✅ Successfully loaded configure.html");
 } catch (e) {
     console.error("❌ Failed to load configure.html:", e);
 }
 
-// Start the official Stremio Server
 serveHTTP(builder.getInterface(), {
     port: process.env.PORT || 7000,
     landing: landingHTML
