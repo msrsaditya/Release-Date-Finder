@@ -1,11 +1,12 @@
-const { addonBuilder, serveHTTP } = require("stremio-addon-sdk");
-const fs = require('fs');
+const { addonBuilder, getRouter } = require("stremio-addon-sdk");
+const express = require('express');
+const cors = require('cors');
 const path = require('path');
 
-// Safe fetch import for all Node environments
+// Safe fetch import
 const fetch = (...args) => import('node-fetch').then(({default: fetch}) => fetch(...args));
 
-// 1. Initialize the Add-on Builder
+// 1. Initialize the Add-on
 const builder = new addonBuilder({
     id: "org.releasedatefinder",
     version: "1.0.0",
@@ -49,11 +50,11 @@ function formatDate(dateObj, timezone, format) {
     try {
         return new Intl.DateTimeFormat(locale, options).format(dateObj);
     } catch (e) {
-        return dateObj.toISOString().split('T')[0]; // Fallback
+        return dateObj.toISOString().split('T')[0];
     }
 }
 
-// --- CORE LOGIC: Group Candidates ---
+// --- CORE LOGIC ---
 function groupCandidates(candidates) {
     if (!candidates || candidates.length === 0) return [];
     candidates.sort((a, b) => a.date - b.date);
@@ -89,138 +90,79 @@ function groupCandidates(candidates) {
 
 // --- STREAM HANDLER ---
 builder.defineStreamHandler(async ({ type, id, config }) => {
-    // 1. Parse Config
+    // 1. Validate Config
     if (!config || !config.apiKey) {
-        return { streams: [{ title: "⚠️ Please configure API Key", url: "https://github.com" }] };
+        // Return a warning stream if not configured
+        return { streams: [{ title: "⚠️ Please configure API Key", url: "https://www.themoviedb.org/" }] };
     }
     const { apiKey, timezone, dateFormat } = config;
     
-    // 2. Resolve IMDB ID (tt...) to TMDB ID
+    // 2. Resolve IDs
     let tmdbId = null;
     try {
         const findUrl = `https://api.themoviedb.org/3/find/${id}?api_key=${apiKey}&external_source=imdb_id`;
         const findResp = await fetch(findUrl);
         const findData = await findResp.json();
         
-        if (type === 'movie' && findData.movie_results?.length > 0) {
-            tmdbId = findData.movie_results[0].id;
-        } else if (type === 'series' && findData.tv_results?.length > 0) {
-            tmdbId = findData.tv_results[0].id;
-        } else {
-            return { streams: [] };
-        }
+        if (type === 'movie' && findData.movie_results?.length > 0) tmdbId = findData.movie_results[0].id;
+        else if (type === 'series' && findData.tv_results?.length > 0) tmdbId = findData.tv_results[0].id;
+        else return { streams: [] };
     } catch (e) {
-        console.error("ID Lookup Failed", e);
         return { streams: [] };
     }
 
-    // 3. Process Logic based on Type
+    // 3. Fetch & Process Dates
     let outputLines = [];
-
     try {
         if (type === 'movie') {
             const url = `https://api.themoviedb.org/3/movie/${tmdbId}/release_dates?api_key=${apiKey}`;
             const resp = await fetch(url);
             const data = await resp.json();
-
-            let theatricalCandidates = [];
-            let digitalCandidates = [];
-
+            let theatrical = [], digital = [];
             if (data.results) {
-                data.results.forEach(countryEntry => {
-                    const regionCode = countryEntry.iso_3166_1;
-                    countryEntry.release_dates.forEach(release => {
-                        const d = new Date(release.release_date);
-                        const cand = { date: d, country: regionCode };
-                        if (release.type === 3) theatricalCandidates.push(cand);
-                        if (release.type === 4) digitalCandidates.push(cand);
+                data.results.forEach(ce => {
+                    ce.release_dates.forEach(r => {
+                        const d = new Date(r.release_date);
+                        if (r.type === 3) theatrical.push({ date: d, country: ce.iso_3166_1 });
+                        if (r.type === 4) digital.push({ date: d, country: ce.iso_3166_1 });
                     });
                 });
             }
-
-            const groupedTheat = groupCandidates(theatricalCandidates);
-            const groupedDig = groupCandidates(digitalCandidates);
+            const gTheat = groupCandidates(theatrical);
+            const gDig = groupCandidates(digital);
+            let finalTheat = gTheat[0] || null;
+            let finalDig = [];
             
-            let finalTheatrical = groupedTheat.length > 0 ? groupedTheat[0] : null;
-            let finalDigitals = [];
-
-            if (groupedDig.length > 0) {
-                if (finalTheatrical) {
-                    const tDate = finalTheatrical.date;
-                    for (let i = 0; i < groupedDig.length; i++) {
-                        const group = groupedDig[i];
-                        if (group.date < tDate) {
-                            group.isSuspicious = true;
-                            finalDigitals.push(group);
-                        } else {
-                            group.isSuspicious = false;
-                            finalDigitals.push(group);
-                            break; 
-                        }
+            if (gDig.length > 0) {
+                if (finalTheat) {
+                    for (let i = 0; i < gDig.length; i++) {
+                        if (gDig[i].date < finalTheat.date) { gDig[i].isSuspicious = true; finalDig.push(gDig[i]); }
+                        else { gDig[i].isSuspicious = false; finalDig.push(gDig[i]); break; }
                     }
-                } else {
-                    finalDigitals.push(groupedDig[0]);
-                }
+                } else finalDig.push(gDig[0]);
             }
 
-            if (finalTheatrical) {
-                const flags = finalTheatrical.countries.map(c => getFlagEmoji(c)).join(" ");
-                const dateStr = formatDate(finalTheatrical.date, timezone, dateFormat);
-                outputLines.push(`Theatrical: ${dateStr} (${flags})`);
-            } else {
-                outputLines.push("Theatrical: TBD");
-            }
+            if (finalTheat) outputLines.push(`Theatrical: ${formatDate(finalTheat.date, timezone, dateFormat)} (${finalTheat.countries.map(c=>getFlagEmoji(c)).join(" ")})`);
+            else outputLines.push("Theatrical: TBD");
 
-            if (finalDigitals.length > 0) {
-                finalDigitals.forEach(g => {
-                    const flags = g.countries.map(c => getFlagEmoji(c)).join(" ");
-                    const dateStr = formatDate(g.date, timezone, dateFormat);
+            if (finalDig.length > 0) {
+                finalDig.forEach(g => {
                     const susp = g.isSuspicious ? " (Likely Untrue)" : "";
-                    outputLines.push(`Digital: ${dateStr} (${flags})${susp}`);
+                    outputLines.push(`Digital: ${formatDate(g.date, timezone, dateFormat)} (${g.countries.map(c=>getFlagEmoji(c)).join(" ")})${susp}`);
                 });
-            } else {
-                outputLines.push("Digital: TBD");
-            }
+            } else outputLines.push("Digital: TBD");
 
         } else if (type === 'series') {
             const url = `https://api.themoviedb.org/3/tv/${tmdbId}?api_key=${apiKey}`;
             const resp = await fetch(url);
             const details = await resp.json();
-
-            let targetDate = null;
-            let labelText = "";
-
-            if (details.next_episode_to_air) {
-                targetDate = details.next_episode_to_air.air_date;
-            } else if (details.last_episode_to_air) {
-                targetDate = details.last_episode_to_air.air_date;
-                try {
-                    const lastSeasonNum = details.last_episode_to_air.season_number;
-                    const sUrl = `https://api.themoviedb.org/3/tv/${tmdbId}/season/${lastSeasonNum}?api_key=${apiKey}`;
-                    const sResp = await fetch(sUrl);
-                    const sData = await sResp.json();
-                    const airDates = new Set();
-                    if(sData.episodes) sData.episodes.forEach(e => { if(e.air_date) airDates.add(e.air_date) });
-                    
-                    if (airDates.size === 1) labelText = "Last Season";
-                    else labelText = "Last Episode, Last Season";
-                } catch(e) {
-                    labelText = "Last Episode, Last Season";
-                }
-            }
-
+            let targetDate = details.next_episode_to_air?.air_date || details.last_episode_to_air?.air_date;
+            
             if (targetDate) {
-                const d = new Date(targetDate);
-                const dateStr = formatDate(d, timezone, dateFormat);
-                const flags = (details.origin_country || []).map(c => getFlagEmoji(c)).join(" ");
-                outputLines.push(`Air Date: ${dateStr} (${flags})`);
-                if (labelText) outputLines.push(labelText);
-            } else {
-                outputLines.push("Air Date: TBD");
-            }
+                outputLines.push(`Air Date: ${formatDate(new Date(targetDate), timezone, dateFormat)} (${(details.origin_country||[]).map(c=>getFlagEmoji(c)).join(" ")})`);
+            } else outputLines.push("Air Date: TBD");
         }
     } catch (err) {
-        console.error("Processing Error:", err);
         return { streams: [{ title: "⚠️ Error fetching dates", name: "Error" }] };
     }
 
@@ -233,13 +175,27 @@ builder.defineStreamHandler(async ({ type, id, config }) => {
     };
 });
 
-// --- SERVER SETUP (THE FIX) ---
-// We read your HTML file and pass it to the official Stremio SDK server.
-// This guarantees that all Stremio routes (like /manifest.json) work perfectly.
+// --- SERVER SETUP (The Official Express Method) ---
+const app = express();
+const port = process.env.PORT || 7000;
 
-const landingHTML = fs.readFileSync(path.join(__dirname, 'configure.html'), 'utf8');
+// 1. Trust Proxy (Required for some hosts like Render/Heroku to handle HTTPS correctly)
+app.set('trust proxy', true);
 
-serveHTTP(builder.getInterface(), {
-    port: process.env.PORT || 7000,
-    landing: landingHTML 
+// 2. CORS Middleware (Crucial for Stremio)
+app.use(cors());
+
+// 3. Serve Custom Configuration Page
+app.get('/', (req, res) => {
+    res.sendFile(path.join(__dirname, 'configure.html'));
+});
+
+// 4. Mount Add-on Router
+// This handles /manifest.json and /:config/stream/... automatically
+const addonInterface = builder.getInterface();
+const addonRouter = getRouter(addonInterface);
+app.use(addonRouter);
+
+app.listen(port, () => {
+    console.log(`Add-on active on port ${port}`);
 });
