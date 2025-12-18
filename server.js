@@ -153,12 +153,12 @@ async function handleStreamRequest(type, id, config) {
                     // 4 spaces before flags, 2 spaces between flags
                     const flags = g.countries.map(c => getFlagEmoji(c)).join("  ");
                     const susp = g.isSuspicious ? " (Likely Wrong)" : "";
-                    outputLines.push(`Digital     : ${dateStr}    ${flags}${susp}`);
+                    outputLines.push(`Digital      : ${dateStr}    ${flags}${susp}`);
                     
                     statusEmojis.push(g.date < now ? "✅" : "❌");
                 });
             } else {
-                outputLines.push("Digital     : TBD");
+                outputLines.push("Digital      : TBD");
                 statusEmojis.push("❌");
             }
 
