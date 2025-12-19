@@ -3,6 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Stremio add-on for fetching release dates of movies and TV shows.">
     <title>Release Date Finder</title>
     <style>
         body { font-family: sans-serif; max-width: 600px; margin: 20px auto; padding: 0 10px; }
@@ -15,33 +16,35 @@
     </style>
 </head>
 <body>
-    <h1>Release Date Finder Stremio Add-on</h1>
-    <div>
-        <label for="apiKeyInput"><strong>TMDB API Key: </strong></label>
-        <input type="text" id="apiKeyInput" placeholder="Enter Your TMDB API Key">
-        <small>Required to fetch release dates.</small>
-    </div>
-    <div>
-        <label for="timezoneSelect"><strong>Select Timezone: </strong></label>
-        <select id="timezoneSelect">
-            <option value="UTC">UTC</option>
-        </select>
-    </div>
-    <div>
-        <label for="dateFormatSelect"><strong>Select Date Format: </strong></label>
-        <select id="dateFormatSelect">
-            <option value="iso">YYYY-MM-DD (ISO)</option>
-            <option value="us">MM/DD/YYYY (US)</option>
-            <option value="eu">DD/MM/YYYY (EU)</option>
-            <option value="long" selected>Long Date (e.g. Jan 1st, 2024)</option>
-        </select>
-    </div>
-    <hr>
-    <div>
-        <button onclick="installAddon()">Install Add-on</button>
-        <button onclick="copyLink()">Copy Link</button>
-        <p id="message"></p>
-    </div>
+    <main>
+        <h1>Release Date Finder Stremio Add-on</h1>
+        <div>
+            <label for="apiKeyInput"><strong>TMDB API Key: </strong></label>
+            <input type="text" id="apiKeyInput" placeholder="Enter Your TMDB API Key">
+            <small>Required to fetch release dates.</small>
+        </div>
+        <div>
+            <label for="timezoneSelect"><strong>Select Timezone: </strong></label>
+            <select id="timezoneSelect">
+                <option value="UTC">UTC</option>
+            </select>
+        </div>
+        <div>
+            <label for="dateFormatSelect"><strong>Select Date Format: </strong></label>
+            <select id="dateFormatSelect">
+                <option value="iso">YYYY-MM-DD (ISO)</option>
+                <option value="us">MM/DD/YYYY (US)</option>
+                <option value="eu">DD/MM/YYYY (EU)</option>
+                <option value="long" selected>Long Date (e.g. Jan 1st, 2024)</option>
+            </select>
+        </div>
+        <hr>
+        <div>
+            <button onclick="installAddon()">Install Add-on</button>
+            <button onclick="copyLink()">Copy Link</button>
+            <p id="message"></p>
+        </div>
+    </main>
     <script>
         (function populateTimezones() {
             const select = document.getElementById('timezoneSelect');
