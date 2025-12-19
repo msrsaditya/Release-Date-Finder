@@ -7,7 +7,7 @@ const MANIFEST = {
     id: "org.releasedatefinder",
     version: "1.0.0",
     name: "Release Date Finder",
-    description: "Stremio add-on for fetching the earliest release dates for movies and TV shows.",
+    description: "Stremio add-on for fetching release dates for movies and TV shows.",
     resources: ["stream"],
     types: ["movie", "series"],
     idPrefixes: ["tt"],
@@ -64,7 +64,7 @@ function groupCandidates(candidates) {
 }
 async function handleStreamRequest(type, id, config) {
     if (!config || !config.apiKey) {
-        return { streams: [{ title: "⚠️ Please configure API Key", url: "https://www.themoviedb.org/" }] };
+        return { streams: [{ title: "⚠️ Please configure API key", url: "https://www.themoviedb.org/" }] };
     }
     const { apiKey, timezone } = config;
     const cleanId = id.split(':')[0];
@@ -195,9 +195,9 @@ const port = process.env.PORT || 7000;
 app.use(cors());
 const baseManifest = {
     id: "org.releasedatefinder",
-    version: "1.0.4",
+    version: "1.0.0",
     name: "Release Date Finder",
-    description: "Shows Theatrical and Digital release dates directly in your streams list.",
+    description: "Stremio add-on for fetching release dates for movies and TV shows.",
     resources: ["stream"],
     types: ["movie", "series"],
     idPrefixes: ["tt"],
