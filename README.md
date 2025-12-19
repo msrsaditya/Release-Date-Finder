@@ -1,3 +1,4 @@
+- Stremio add-on for fetching release dates of movies and TV shows.
 - You can check the Configuration page's status [here](https://stats.uptimerobot.com/fR3mYe5Yub/802014481)
 - The whole codebase is <350 lines long.
 - There's no bloat, feature creep or any other useless stuff.

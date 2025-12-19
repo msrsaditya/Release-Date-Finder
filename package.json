@@ -1,7 +1,7 @@
 {
   "name": "release-date-finder",
   "version": "1.0.0",
-  "description": "Stremio add-on for fetching release dates for movies and TV shows.",
+  "description": "Stremio add-on for fetching release dates of movies and TV shows.",
   "main": "server.js",
   "scripts": {
     "start": "node server.js"
