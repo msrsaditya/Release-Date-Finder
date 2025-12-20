@@ -12,7 +12,8 @@ function getOrdinalNum(n) {
 }
 function parseDateSafe(dateString) {
     if (!dateString) return null;
-    const parts = dateString.split('-');
+    const cleanDate = dateString.split('T')[0];
+    const parts = cleanDate.split('-');
     if (parts.length !== 3) return null;
     return new Date(Number(parts[0]), parts[1] - 1, Number(parts[2]), 12, 0, 0);
 }
