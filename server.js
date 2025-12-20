@@ -182,13 +182,11 @@ async function handleStreamRequest(type, id, config) {
         return { streams: [{ title: "⚠️ Error fetching dates", name: "Error" }] };
     }
     const emojiStack = statusEmojis.join("\n");
-    const tmdbUrl = `https://www.themoviedb.org/${type === 'series' ? 'tv' : 'movie'}/${tmdbId}`;
     return {
         streams: [{
             name: emojiStack,
             title: outputLines.join("\n"),
-            externalUrl: tmdbUrl,
-            url: tmdbUrl
+            externalUrl: `https://www.themoviedb.org/${type === 'series' ? 'tv' : 'movie'}/${tmdbId}` 
         }]
     };
 }
