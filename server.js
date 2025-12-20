@@ -14,7 +14,7 @@ function parseDateSafe(dateString) {
     if (!dateString) return null;
     const parts = dateString.split('-');
     if (parts.length !== 3) return null;
-    return new Date(parts[0], parts[1] - 1, parts[2], 12, 0, 0);
+    return new Date(Number(parts[0]), parts[1] - 1, Number(parts[2]), 12, 0, 0);
 }
 function formatDateSafe(dateObj, formatStr) {
     if (!dateObj) return "TBD";
