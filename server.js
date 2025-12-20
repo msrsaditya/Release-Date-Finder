@@ -2,20 +2,6 @@ const express = require('express');
 const cors = require('cors');
 const path = require('path');
 const fetch = require('node-fetch');
-const MANIFEST = {
-    id: "org.releasedatefinder",
-    version: "1.0.0",
-    name: "Release Date Finder",
-    description: "Stremio add-on for fetching release dates of movies and TV shows.",
-    resources: ["stream"],
-    types: ["movie", "series"],
-    idPrefixes: ["tt"],
-    catalogs: [],
-    behaviorHints: {
-        configurable: true,
-        configurationRequired: true
-    }
-};
 function getFlagEmoji(countryCode) {
     if (!countryCode) return "";
     const codePoints = countryCode.toUpperCase().split('').map(char => 127397 + char.charCodeAt());
@@ -97,7 +83,7 @@ async function handleStreamRequest(type, id, config) {
         return { streams: [] };
     }
     let outputLines = [];
-    let statusEmojis = []; 
+    let statusEmojis = [];
     const now = new Date();
     try {
         if (type === 'movie') {
@@ -122,12 +108,12 @@ async function handleStreamRequest(type, id, config) {
             if (gDig.length > 0) {
                 if (finalTheat) {
                     for (let i = 0; i < gDig.length; i++) {
-                        if (gDig[i].date < finalTheat.date) { 
-                            gDig[i].isSuspicious = true; 
-                            finalDig.push(gDig[i]); 
-                        } else { 
-                            gDig[i].isSuspicious = false; 
-                            finalDig.push(gDig[i]); 
+                        if (gDig[i].date < finalTheat.date) {
+                            gDig[i].isSuspicious = true;
+                            finalDig.push(gDig[i]);
+                        } else {
+                            gDig[i].isSuspicious = false;
+                            finalDig.push(gDig[i]);
                             break;
                         }
                     }
@@ -211,7 +197,7 @@ async function handleStreamRequest(type, id, config) {
         streams: [{
             name: emojiStack,
             title: outputLines.join("\n"),
-            externalUrl: `https://www.themoviedb.org/${type === 'series' ? 'tv' : 'movie'}/${tmdbId}` 
+            externalUrl: `https://www.themoviedb.org/${type === 'series' ? 'tv' : 'movie'}/${tmdbId}`
         }]
     };
 }

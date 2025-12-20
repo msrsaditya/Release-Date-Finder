@@ -24,12 +24,6 @@
             <small>Required to fetch release dates.</small>
         </div>
         <div>
-            <label for="timezoneSelect"><strong>Select Timezone: </strong></label>
-            <select id="timezoneSelect">
-                <option value="UTC">UTC</option>
-            </select>
-        </div>
-        <div>
             <label for="dateFormatSelect"><strong>Select Date Format: </strong></label>
             <select id="dateFormatSelect">
                 <option value="iso">YYYY-MM-DD (ISO)</option>
@@ -46,28 +40,8 @@
         </div>
     </main>
     <script>
-        (function populateTimezones() {
-            const select = document.getElementById('timezoneSelect');
-            const userTz = Intl.DateTimeFormat().resolvedOptions().timeZone;
-            try {
-                const timezones = Intl.supportedValuesOf('timeZone');
-                timezones.forEach(tz => {
-                    if (tz === 'UTC') return;
-                    const opt = document.createElement('option');
-                    opt.value = tz;
-                    opt.innerText = tz;
-                    select.appendChild(opt);
-                });
-                if (userTz && (timezones.includes(userTz) || userTz === 'UTC')) {
-                    select.value = userTz;
-                }
-            } catch (e) {
-                console.warn("Timezone API not supported, defaulting to UTC.");
-            }
-        })();
         function getConfiguration() {
             const apiKey = document.getElementById("apiKeyInput").value.trim();
-            const timezone = document.getElementById("timezoneSelect").value;
             const dateFormat = document.getElementById("dateFormatSelect").value;
             if (!apiKey) {
                 const msg = document.getElementById("message");
@@ -75,14 +49,13 @@
                 msg.className = "error";
                 return null;
             }
-            const config = { apiKey, timezone, dateFormat };
+            const config = { apiKey, dateFormat };
             return btoa(JSON.stringify(config));
         }
         function installAddon() {
             const config = getConfiguration();
             if (!config) return;
             const host = window.location.host;
-            const protocol = window.location.protocol.replace(':', '');
             window.location.href = `stremio://${host}/${config}/manifest.json`;
         }
         function copyLink() {
