@@ -96,7 +96,7 @@ async function handleStreamRequest(type, id, config) {
                     ce.release_dates.forEach(r => {
                         const d = parseDateSafe(r.release_date);
                         if (!d) return;
-                        if (r.type === 3) theatrical.push({ date: d, country: ce.iso_3166_1 });
+                        if ([2, 3].includes(r.type)) theatrical.push({ date: d, country: ce.iso_3166_1 });
                         if (r.type === 4) digital.push({ date: d, country: ce.iso_3166_1 });
                     });
                 });
