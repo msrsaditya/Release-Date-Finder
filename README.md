@@ -1,7 +1,7 @@
 - Stremio add-on for fetching release dates of movies and TV shows.
-- The add-on's configuration page is deployed on [Render](https://release-date-finder.onrender.com).
+- The add-on is deployed on [Render](https://release-date-finder.onrender.com).
 - You can check its status on [UptimeRobot](https://stats.uptimerobot.com/fR3mYe5Yub/802014481).
-- It also has a perfect 100/100 LightHouse scores across all categories and modes in both desktop and mobile.
+- The website has a perfect 100/100 LightHouse score across all categories and modes in both desktop and mobile.
 - The whole codebase is ~300 lines long, written in pure HTML and Vanilla JS.
 - There's no bloat, feature creep, or telemetry.
 - Hope you find it useful.
