@@ -1,8 +1,7 @@
 const express = require('express');
 const cors = require('cors');
 const path = require('path');
-const fs = require('fs');
-const fetch = (...args) => import('node-fetch').then(({default: fetch}) => fetch(...args));
+const fetch = require('node-fetch');
 const MANIFEST = {
     id: "org.releasedatefinder",
     version: "1.0.0",
@@ -25,20 +24,38 @@ function getFlagEmoji(countryCode) {
 function getOrdinalNum(n) {
     return n + (["st", "nd", "rd"][((n + 90) % 100 - 10) % 10 - 1] || "th");
 }
-function formatDate(dateObj, timezone) {
+function parseDateSafe(dateString) {
+    if (!dateString) return null;
+    const parts = dateString.split('-');
+    if (parts.length !== 3) return null;
+    return new Date(parts[0], parts[1] - 1, parts[2], 12, 0, 0);
+}
+function formatDateSafe(dateObj, formatStr) {
     if (!dateObj) return "TBD";
-    const now = new Date();
-    const currentYear = now.getFullYear();
-    const dateYear = dateObj.getFullYear();
-    let options = { timeZone: timezone, month: 'short' };
-    const month = new Intl.DateTimeFormat('en-US', options).format(dateObj);
-    const day = new Intl.DateTimeFormat('en-US', { timeZone: timezone, day: 'numeric' }).format(dateObj);
-    const dayOrdinal = getOrdinalNum(parseInt(day));
-    let dateStr = `${month} ${dayOrdinal}`;
-    if (dateYear !== currentYear) {
-        dateStr += `, ${dateYear}`;
+    const year = dateObj.getFullYear();
+    const monthIndex = dateObj.getMonth();
+    const day = dateObj.getDate();
+    const mm = String(monthIndex + 1).padStart(2, '0');
+    const dd = String(day).padStart(2, '0');
+    if (isNaN(year)) return "TBD";
+    switch (formatStr) {
+        case 'iso':
+            return `${year}-${mm}-${dd}`;
+        case 'us':
+            return `${mm}/${dd}/${year}`;
+        case 'eu':
+            return `${dd}/${mm}/${year}`;
+        case 'long':
+        default:
+            const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+            const mName = monthNames[monthIndex];
+            const dOrd = getOrdinalNum(day);
+            const now = new Date();
+            if (year !== now.getFullYear()) {
+                return `${mName} ${dOrd}, ${year}`;
+            }
+            return `${mName} ${dOrd}`;
     }
-    return dateStr;
 }
 function groupCandidates(candidates) {
     if (!candidates || candidates.length === 0) return [];
@@ -66,7 +83,7 @@ async function handleStreamRequest(type, id, config) {
     if (!config || !config.apiKey) {
         return { streams: [{ title: "⚠️ Please configure API key", url: "https://www.themoviedb.org/" }] };
     }
-    const { apiKey, timezone } = config;
+    const { apiKey, dateFormat } = config;
     const cleanId = id.split(':')[0];
     let tmdbId = null;
     try {
@@ -91,7 +108,8 @@ async function handleStreamRequest(type, id, config) {
             if (data.results) {
                 data.results.forEach(ce => {
                     ce.release_dates.forEach(r => {
-                        const d = new Date(r.release_date);
+                        const d = parseDateSafe(r.release_date);
+                        if (!d) return;
                         if (r.type === 3) theatrical.push({ date: d, country: ce.iso_3166_1 });
                         if (r.type === 4) digital.push({ date: d, country: ce.iso_3166_1 });
                     });
@@ -101,17 +119,24 @@ async function handleStreamRequest(type, id, config) {
             const gDig = groupCandidates(digital);
             let finalTheat = gTheat[0] || null;
             let finalDig = [];
-
             if (gDig.length > 0) {
                 if (finalTheat) {
                     for (let i = 0; i < gDig.length; i++) {
-                        if (gDig[i].date < finalTheat.date) { gDig[i].isSuspicious = true; finalDig.push(gDig[i]); }
-                        else { gDig[i].isSuspicious = false; finalDig.push(gDig[i]); break; }
+                        if (gDig[i].date < finalTheat.date) { 
+                            gDig[i].isSuspicious = true; 
+                            finalDig.push(gDig[i]); 
+                        } else { 
+                            gDig[i].isSuspicious = false; 
+                            finalDig.push(gDig[i]); 
+                            break;
+                        }
                     }
-                } else finalDig.push(gDig[0]);
+                } else {
+                    finalDig.push(gDig[0]);
+                }
             }
             if (finalTheat) {
-                const dateStr = formatDate(finalTheat.date, timezone);
+                const dateStr = formatDateSafe(finalTheat.date, dateFormat);
                 const flags = finalTheat.countries.map(c => getFlagEmoji(c)).join("  ");
                 outputLines.push(`Theaters: ${dateStr}    ${flags}`);
                 statusEmojis.push(finalTheat.date < now ? "✅" : "❌");
@@ -121,11 +146,10 @@ async function handleStreamRequest(type, id, config) {
             }
             if (finalDig.length > 0) {
                 finalDig.forEach(g => {
-                    const dateStr = formatDate(g.date, timezone);
+                    const dateStr = formatDateSafe(g.date, dateFormat);
                     const flags = g.countries.map(c => getFlagEmoji(c)).join("  ");
                     const susp = g.isSuspicious ? " (Likely Wrong)" : "";
                     outputLines.push(`Digital      : ${dateStr}    ${flags}${susp}`);
-                    
                     statusEmojis.push(g.date < now ? "✅" : "❌");
                 });
             } else {
@@ -140,7 +164,7 @@ async function handleStreamRequest(type, id, config) {
             let labelText = "";
             let prefix = "Air Date:";
             if (details.next_episode_to_air) {
-                targetDate = new Date(details.next_episode_to_air.air_date);
+                targetDate = parseDateSafe(details.next_episode_to_air.air_date);
                 const lastSeasonNum = details.last_episode_to_air ? details.last_episode_to_air.season_number : 0;
                 const nextSeasonNum = details.next_episode_to_air.season_number;
                 if (nextSeasonNum > lastSeasonNum) {
@@ -149,7 +173,7 @@ async function handleStreamRequest(type, id, config) {
                     prefix = "Next EP Air Date:";
                 }
             } else if (details.last_episode_to_air) {
-                targetDate = new Date(details.last_episode_to_air.air_date);
+                targetDate = parseDateSafe(details.last_episode_to_air.air_date);
                 prefix = "Last Air Date:";
                 try {
                     const lastSeasonNum = details.last_episode_to_air.season_number;
@@ -168,7 +192,7 @@ async function handleStreamRequest(type, id, config) {
                 }
             }
             if (targetDate) {
-                const dateStr = formatDate(targetDate, timezone);
+                const dateStr = formatDateSafe(targetDate, dateFormat);
                 const flags = (details.origin_country || []).map(c => getFlagEmoji(c)).join("  ");
                 outputLines.push(`${prefix} ${dateStr}    ${flags}`);
                 if (labelText) outputLines.push(labelText);
@@ -179,6 +203,7 @@ async function handleStreamRequest(type, id, config) {
             }
         }
     } catch (err) {
+        console.error(err);
         return { streams: [{ title: "⚠️ Error fetching dates", name: "Error" }] };
     }
     const emojiStack = statusEmojis.join("\n");
