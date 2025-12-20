@@ -5,3 +5,6 @@
 - The whole codebase is ~300 lines long, written in pure HTML and Vanilla JS.
 - There's no bloat, feature creep, or telemetry.
 - Hope you find it useful.
+
+### Screenshot of how it looks in Stremio:
+![Screenshot](https://github.com/msrsaditya/Release-Date-Finder/blob/main/Addon.jpg)
